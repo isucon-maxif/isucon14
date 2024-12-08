@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -111,21 +114,23 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	chairLocationID := ulid.Make().String()
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (?, ?, ?, ?)`,
-		chairLocationID, chair.ID, req.Latitude, req.Longitude,
-	); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+	// chairLocationID := ulid.Make().String()
+	// if _, err := tx.ExecContext(
+	// 	ctx,
+	// 	`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (?, ?, ?, ?)`,
+	// 	chairLocationID, chair.ID, req.Latitude, req.Longitude,
+	// ); err != nil {
+	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	return
+	// }
 
-	location := &ChairLocation{}
-	if err := tx.GetContext(ctx, location, `SELECT * FROM chair_locations WHERE id = ?`, chairLocationID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+	// location := &ChairLocation{}
+	// if err := tx.GetContext(ctx, location, `SELECT * FROM chair_locations WHERE id = ?`, chairLocationID); err != nil {
+	// 	writeError(w, http.StatusInternalServerError, err)
+	// 	return
+	// }
+
+	chairQueue <- QueueItem{chair, req}
 
 	ride := &Ride{}
 	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
@@ -162,8 +167,75 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, &chairPostCoordinateResponse{
-		RecordedAt: location.CreatedAt.UnixMilli(),
+		RecordedAt: time.Now().UnixMilli(),
 	})
+}
+
+type QueueItem struct {
+	chair *Chair
+	req   *Coordinate
+}
+
+var (
+	chairQueue = make(chan QueueItem, 10000) // キューのチャネル
+)
+
+func batchInsertWorker() {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		batchInsertChairs()
+	}
+}
+
+func batchInsertChairs() {
+	if len(chairQueue) == 0 {
+		return
+	}
+
+	tx, err := db.Beginx()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+
+	ctx := context.Background()
+
+	queueItems := []QueueItem{}
+	for len(chairQueue) > 0 {
+		queueItem := <-chairQueue
+		queueItems = append(queueItems, queueItem)
+	}
+
+	var locations []ChairLocation
+	for _, queueItem := range queueItems {
+		locations = append(locations, ChairLocation{
+			ID:        ulid.Make().String(),
+			ChairID:   queueItem.chair.ID,
+			Latitude:  queueItem.req.Latitude,
+			Longitude: queueItem.req.Longitude,
+		})
+	}
+
+	var rows []interface{}
+	for _, location := range locations {
+		rows = append(rows, location.ID, location.ChairID, location.Latitude, location.Longitude)
+	}
+
+	query, args, err := sqlx.In(`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (?, ?, ?, ?)`, rows...)
+	if err != nil {
+		return
+	}
+
+	query = tx.Rebind(query)
+	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		return
+	}
 }
 
 type simpleUser struct {

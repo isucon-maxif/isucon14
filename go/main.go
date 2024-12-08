@@ -36,6 +36,7 @@ func main() {
 }
 
 func setup() http.Handler {
+	go batchInsertWorker()
 	host := os.Getenv("ISUCON_DB_HOST")
 	if host == "" {
 		host = "127.0.0.1"
