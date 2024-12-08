@@ -490,6 +490,7 @@ func appPostRidesEstimatedFare(w http.ResponseWriter, r *http.Request) {
 func calculateDistance(aLatitude, aLongitude, bLatitude, bLongitude int) int {
 	return abs(aLatitude-bLatitude) + abs(aLongitude-bLongitude)
 }
+
 func abs(a int) int {
 	if a < 0 {
 		return -a
@@ -871,15 +872,30 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	retrievedAt := &time.Time{}
+	err = tx.GetContext(ctx, retrievedAt, `SELECT CURRENT_TIMESTAMP(6)`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	chairs := []Chair{}
 	err = tx.SelectContext(
 		ctx,
 		&chairs,
-		`SELECT * FROM chairs`,
+		`SELECT * FROM chairs WHERE is_active = TRUE`,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	// 早期リターン
+	if len(chairs) == 0 {
+		writeJSON(w, http.StatusOK, &appGetNearbyChairsResponse{
+			Chairs:      []appGetNearbyChairsResponseChair{},
+			RetrievedAt: retrievedAt.UnixMilli(),
+		})
 	}
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
@@ -938,17 +954,6 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 				},
 			})
 		}
-	}
-
-	retrievedAt := &time.Time{}
-	err = tx.GetContext(
-		ctx,
-		retrievedAt,
-		`SELECT CURRENT_TIMESTAMP(6)`,
-	)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
 	}
 
 	writeJSON(w, http.StatusOK, &appGetNearbyChairsResponse{
