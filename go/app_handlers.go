@@ -952,7 +952,7 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		chairIDs[i] = chairs[i].ID
 	}
 
-	query, args, err := sqlx.In("SELECT * FROM rides WHERE chair_id IN (?) ORDER BY created_at DESC", chairIDs)
+	query, args, err := sqlx.In("SELECT id FROM rides WHERE chair_id IN (?) ORDER BY created_at DESC", chairIDs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
