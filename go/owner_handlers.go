@@ -125,9 +125,9 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 		SELECT rides.*
 		FROM rides
 		JOIN ride_statuses ON rides.id = ride_statuses.ride_id
-		WHERE rides.chair_id IN (?)
-	  	AND ride_statuses.status = 'COMPLETED'
-	  	AND ride_statuses.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
+		WHERE chair_id IN (?)
+	  	AND status = 'COMPLETED'
+	  	AND updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
 	`, chairIDs, since, until)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
