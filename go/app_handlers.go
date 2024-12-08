@@ -956,15 +956,51 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
-	for _, chair := range chairs {
-		ridesIDs := []string{}
-		if err := tx.SelectContext(ctx, &ridesIDs, `SELECT id FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
+
+	ridesIDsMap := map[string][]string{}
+	chairIds := make([]string, len(chairs))
+	for i, chair := range chairs {
+		chairIds[i] = chair.ID
+	}
+	rides := []Ride{}
+	if len(chairIds) > 0 {
+		query, args, err := sqlx.In(`SELECT * FROM rides WHERE chair_id IN (?) ORDER BY created_at DESC`, chairIds)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		query = tx.Rebind(query)
+		if err := tx.SelectContext(ctx, &rides, query, args...); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		for _, ride := range rides {
+			ridesIDsMap[ride.ChairID.String] = append(ridesIDsMap[ride.ChairID.String], ride.ID)
+		}
+	}
 
+	allRidesIDs := []string{}
+	for _, ridesIDs := range ridesIDsMap {
+		allRidesIDs = append(allRidesIDs, ridesIDs...)
+	}
+
+	allStatusMap, err := getLatestRideStatusBulk(ctx, tx, allRidesIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+	}
+
+	for _, chair := range chairs {
+		ridesIDs := ridesIDsMap[chair.ID]
 		skip := false
-		statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
+		statusMap := make(map[string]string, len(ridesIDs))
+		for _, rideID := range ridesIDs {
+			status, ok := allStatusMap[rideID]
+			if !ok {
+				writeError(w, http.StatusInternalServerError, errors.New("ride status not found"))
+				return
+			}
+			statusMap[rideID] = status
+		}
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 		}
@@ -978,33 +1014,6 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// 最新の位置情報を取得
-		// chairLocation := &ChairLocation{}
-		// err = tx.GetContext(
-		// 	ctx,
-		// 	chairLocation,
-		// 	`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
-		// 	chair.ID,
-		// )
-		// if err != nil {
-		// 	if errors.Is(err, sql.ErrNoRows) {
-		// 		continue
-		// 	}
-		// 	writeError(w, http.StatusInternalServerError, err)
-		// 	return
-		// }
-
-		// if calculateDistance(coordinate.Latitude, coordinate.Longitude, chairLocation.Latitude, chairLocation.Longitude) <= distance {
-		// 	nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
-		// 		ID:    chair.ID,
-		// 		Name:  chair.Name,
-		// 		Model: chair.Model,
-		// 		CurrentCoordinate: Coordinate{
-		// 			Latitude:  chairLocation.Latitude,
-		// 			Longitude: chairLocation.Longitude,
-		// 		},
-		// 	})
-		// }
 		if !chair.LocationLat.Valid || !chair.LocationLon.Valid {
 			continue
 		}
