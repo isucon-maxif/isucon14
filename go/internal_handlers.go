@@ -23,7 +23,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// 空きイスとその座標を取得
 	freeChairs := []*Chair{}
-	if err := db.SelectContext(ctx, &freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT * FROM ride_statuses WHERE EXISTS (SELECT * FROM rides WHERE rides.chair_id = chairs.id AND rides.id = ride_statuses.ride_id AND status != 'COMPLETED'))"); err != nil {
+	if err := db.SelectContext(ctx, &freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT rides.id FROM ride_statuses INNER JOIN rides ON ride_statuses.ride_id = rides.id WHERE rides.chair_id = chairs.id GROUP BY rides.id HAVING COUNT(*) < 6)"); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
