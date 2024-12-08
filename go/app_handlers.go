@@ -820,19 +820,31 @@ func getChairStats(ctx context.Context, tx *sqlx.Tx, chairID string) (appGetNoti
 		return stats, err
 	}
 
+	rideIDs := make([]string, len(rides))
+	for i := range rides {
+		rideIDs[i] = rides[i].ID
+	}
+
+	query, args, err := sqlx.In("SELECT * FROM ride_statuses WHERE ride_id IN (?)", rideIDs)
+	if err != nil {
+		return stats, err
+	}
+	query = tx.Rebind(query)
+
+	allRideStatuses := []RideStatus{}
+	if err := tx.SelectContext(ctx, &allRideStatuses, query, args...); err != nil {
+		return stats, err
+	}
+
+	rideStatusesMap := make(map[string][]RideStatus)
+	for _, rideStatuses := range allRideStatuses {
+		rideStatusesMap[rideStatuses.RideID] = append(rideStatusesMap[rideStatuses.RideID], rideStatuses)
+	}
+
 	totalRideCount := 0
 	totalEvaluation := 0.0
 	for _, ride := range rides {
-		rideStatuses := []RideStatus{}
-		err = tx.SelectContext(
-			ctx,
-			&rideStatuses,
-			`SELECT * FROM ride_statuses WHERE ride_id = ? ORDER BY created_at`,
-			ride.ID,
-		)
-		if err != nil {
-			return stats, err
-		}
+		rideStatuses := rideStatusesMap[ride.ID]
 
 		var arrivedAt, pickupedAt *time.Time
 		var isCompleted bool
