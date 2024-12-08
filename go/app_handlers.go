@@ -943,14 +943,36 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	chairIDs := make([]string, len(chairs))
+	for i, chair := range chairs {
+		chairIDs[i] = chair.ID
+	}
+
+	query, args, err := sqlx.In("SELECT * FROM rides WHERE chair_id IN (?) ORDER BY created_at DESC", chairIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	query = tx.Rebind(query)
+
+	rides := []*Ride{}
+	err = tx.SelectContext(ctx, &rides, query, args...)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	chairToRideIDs := make(map[string][]string)
+	for _, ride := range rides {
+		chairToRideIDs[ride.ChairID.String] = append(chairToRideIDs[ride.ChairID.String], ride.ID)
+	}
+
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
 	for _, chair := range chairs {
-		ridesIDs := []string{}
-		if err := tx.SelectContext(ctx, &ridesIDs, `SELECT id FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+		ridesIDs, exists := chairToRideIDs[chair.ID]
+		if !exists {
+			continue
 		}
-
 		skip := false
 		statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
 		if err != nil {
