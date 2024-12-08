@@ -107,73 +107,24 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 
 	chair := ctx.Value("chair").(*Chair)
 
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	defer tx.Rollback()
+	response := make(chan struct {
+		RecordedAt int64 `json:"recorded_at"`
+	})
+	chairQueue <- QueueItem{chair, req, response}
 
-	// chairLocationID := ulid.Make().String()
-	// if _, err := tx.ExecContext(
-	// 	ctx,
-	// 	`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (?, ?, ?, ?)`,
-	// 	chairLocationID, chair.ID, req.Latitude, req.Longitude,
-	// ); err != nil {
-	// 	writeError(w, http.StatusInternalServerError, err)
-	// 	return
-	// }
-
-	// location := &ChairLocation{}
-	// if err := tx.GetContext(ctx, location, `SELECT * FROM chair_locations WHERE id = ?`, chairLocationID); err != nil {
-	// 	writeError(w, http.StatusInternalServerError, err)
-	// 	return
-	// }
-
-	chairQueue <- QueueItem{chair, req}
-
-	ride := &Ride{}
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-	} else {
-		status, err := getLatestRideStatus(ctx, tx, ride.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if status != "COMPLETED" && status != "CANCELED" {
-			if req.Latitude == ride.PickupLatitude && req.Longitude == ride.PickupLongitude && status == "ENROUTE" {
-				if _, err := tx.ExecContext(ctx, "INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)", ulid.Make().String(), ride.ID, "PICKUP"); err != nil {
-					writeError(w, http.StatusInternalServerError, err)
-					return
-				}
-			}
-
-			if req.Latitude == ride.DestinationLatitude && req.Longitude == ride.DestinationLongitude && status == "CARRYING" {
-				if _, err := tx.ExecContext(ctx, "INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)", ulid.Make().String(), ride.ID, "ARRIVED"); err != nil {
-					writeError(w, http.StatusInternalServerError, err)
-					return
-				}
-			}
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
+	res := <-response
 
 	writeJSON(w, http.StatusOK, &chairPostCoordinateResponse{
-		RecordedAt: time.Now().UnixMilli(),
+		RecordedAt: res.RecordedAt,
 	})
 }
 
 type QueueItem struct {
 	chair *Chair
 	req   *Coordinate
+	res   chan struct {
+		RecordedAt int64 `json:"recorded_at"`
+	}
 }
 
 var (
@@ -181,7 +132,7 @@ var (
 )
 
 func batchInsertWorker() {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -233,9 +184,90 @@ func batchInsertChairs() {
 		return
 	}
 
+	// `UPDATE chairs SET location_lat = ?, location_lon = ? WHERE id = ?`,
+	query = ""
+	args = []interface{}{}
+	for _, location := range locations {
+		query += "UPDATE chairs SET location_lat = ?, location_lon = ? WHERE id = ?;"
+		args = append(args, location.Latitude, location.Longitude, location.ChairID)
+	}
+
+	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+		return
+	}
+
+	chairIDs := []string{}
+	for _, queueItem := range queueItems {
+		chairIDs = append(chairIDs, queueItem.chair.ID)
+	}
+
+	var rides []Ride
+	query, args, err = sqlx.In(`
+	SELECT id, user_id, chair_id, pickup_latitude, pickup_longitude, destination_latitude, destination_longitude, evaluation, created_at, updated_at FROM (
+		SELECT id, user_id, chair_id, pickup_latitude, pickup_longitude, destination_latitude, destination_longitude, evaluation, created_at, updated_at,
+			   ROW_NUMBER() OVER (PARTITION BY chair_id ORDER BY updated_at DESC) as rn
+		FROM rides
+	) tmp
+	WHERE rn = 1 AND chair_id IN (?)
+	`, chairIDs)
+	if err != nil {
+		return
+	}
+
+	query = tx.Rebind(query)
+	if err := tx.SelectContext(ctx, &rides, query, args...); err != nil {
+		return
+	}
+
+	var ridesIDs []string
+	for _, ride := range rides {
+		ridesIDs = append(ridesIDs, ride.ID)
+	}
+
+	statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
+	if err != nil {
+		return
+	}
+
+	var rows2 []interface{}
+
+	for _, ride := range rides {
+		status, ok := statusMap[ride.ID]
+		if !ok {
+			continue
+		}
+
+		if status != "COMPLETED" && status != "CANCELED" {
+			if locations[0].Latitude == ride.PickupLatitude && locations[0].Longitude == ride.PickupLongitude && status == "ENROUTE" {
+				rows2 = append(rows2, ulid.Make().String(), ride.ID, "PICKUP")
+			}
+
+			if locations[0].Latitude == ride.DestinationLatitude && locations[0].Longitude == ride.DestinationLongitude && status == "CARRYING" {
+				rows2 = append(rows2, ulid.Make().String(), ride.ID, "ARRIVED")
+			}
+		}
+	}
+
+	query, args, err = sqlx.In(`INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)`, rows2...)
+	if err != nil {
+		return
+	}
+
+	query = tx.Rebind(query)
+	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+		return
+	}
+
 	if err := tx.Commit(); err != nil {
 		return
 	}
+
+	for _, queueItem := range queueItems {
+		queueItem.res <- struct {
+			RecordedAt int64 `json:"recorded_at"`
+		}{RecordedAt: time.Now().UnixMilli()}
+	}
+
 }
 
 type simpleUser struct {
