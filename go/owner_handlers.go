@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -115,19 +116,45 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chairIDs := make([]string, len(chairs))
+	for i, chair := range chairs {
+		chairIDs[i] = chair.ID
+	}
+
+	query, args, err := sqlx.In(`
+		SELECT rides.*
+		FROM rides
+		JOIN ride_statuses ON rides.id = ride_statuses.ride_id
+		WHERE rides.chair_id IN (?)
+	  	AND ride_statuses.status = 'COMPLETED'
+	  	AND ride_statuses.updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
+	`, chairIDs, since, until)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	query = tx.Rebind(query)
+
+	rides := []Ride{}
+	if err := tx.SelectContext(ctx, &rides, query, args...); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	chairSalesMap := make(map[string]int)
+	for _, ride := range rides {
+		if ride.ChairID.Valid {
+			chairSalesMap[ride.ChairID.String] += calculateSale(ride)
+		}
+	}
+
 	res := ownerGetSalesResponse{
 		TotalSales: 0,
 	}
 
 	modelSalesByModel := map[string]int{}
 	for _, chair := range chairs {
-		rides := []Ride{}
-		if err := tx.SelectContext(ctx, &rides, "SELECT rides.* FROM rides JOIN ride_statuses ON rides.id = ride_statuses.ride_id WHERE chair_id = ? AND status = 'COMPLETED' AND updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND", chair.ID, since, until); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		sales := sumSales(rides)
+		sales := chairSalesMap[chair.ID]
 		res.TotalSales += sales
 
 		res.Chairs = append(res.Chairs, chairSales{
