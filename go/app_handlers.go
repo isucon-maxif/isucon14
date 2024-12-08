@@ -945,17 +945,13 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
 	for _, chair := range chairs {
-		rides := []*Ride{}
-		if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
+		ridesIDs := []string{}
+		if err := tx.SelectContext(ctx, &ridesIDs, `SELECT id FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 
 		skip := false
-		ridesIDs := make([]string, len(rides))
-		for i, ride := range rides {
-			ridesIDs[i] = ride.ID
-		}
 		statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
