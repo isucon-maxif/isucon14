@@ -53,31 +53,6 @@ CREATE TABLE chair_locations
 
 CREATE INDEX idx_chairlocations_chairid_createdat ON chair_locations(chair_id, created_at DESC);
 
-ALTER TABLE chair_locations ADD COLUMN total_distance DECIMAL(10,2) DEFAULT 0;
-
-DELIMITER //
-CREATE TRIGGER update_total_distance BEFORE INSERT ON chair_locations
-FOR EACH ROW
-BEGIN
-    DECLARE prev_lat DECIMAL(10,8);
-    DECLARE prev_lng DECIMAL(10,8);
-    DECLARE prev_total DECIMAL(10,2);
-    
-    SELECT latitude, longitude, total_distance 
-    INTO prev_lat, prev_lng, prev_total
-    FROM chair_locations 
-    WHERE chair_id = NEW.chair_id 
-    ORDER BY created_at DESC 
-    LIMIT 1;
-    
-    IF prev_lat IS NOT NULL THEN
-        SET NEW.total_distance = prev_total + (ABS(NEW.latitude - prev_lat) + ABS(NEW.longitude - prev_lng));
-    ELSE
-        SET NEW.total_distance = 0;
-    END IF;
-END;//
-DELIMITER ;
-
 DROP TABLE IF EXISTS users;
 CREATE TABLE users
 (
