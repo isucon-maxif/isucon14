@@ -63,9 +63,10 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			if isChairUsed[i] || !chair.LocationLat.Valid || !chair.LocationLon.Valid {
 				continue
 			}
-			dist := abs(int(chair.LocationLat.Int32)-ride.PickupLatitude) + abs(int(chair.LocationLon.Int32)-ride.PickupLongitude)
+			pickupDist := abs(int(chair.LocationLat.Int32)-ride.PickupLatitude) + abs(int(chair.LocationLon.Int32)-ride.PickupLongitude)
+			moveDist := abs(ride.PickupLatitude-ride.DestinationLatitude) + abs(ride.PickupLongitude-ride.DestinationLongitude)
 			speed := chairModels[chair.Model]
-			time := float64(dist) / float64(speed)
+			time := float64(pickupDist+moveDist*10) / float64(speed)
 			if time < bestChairTime {
 				bestChairTime = time
 				bestChairIdx = i
