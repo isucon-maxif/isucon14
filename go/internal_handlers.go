@@ -49,5 +49,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chairByAuthTokenCacheMutex.Lock()
+	delete(chairByAuthTokenCache, matched.AccessToken)
+	chairByAuthTokenCacheMutex.Unlock()
+
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -19,7 +20,11 @@ import (
 	"github.com/kaz/pprotein/integration/standalone"
 )
 
-var db *sqlx.DB
+var (
+	db                         *sqlx.DB
+	chairByAuthTokenCache      = map[string]*Chair{}
+	chairByAuthTokenCacheMutex sync.RWMutex
+)
 
 func main() {
 	go func() {
@@ -125,7 +130,14 @@ type postInitializeResponse struct {
 	Language string `json:"language"`
 }
 
+func initCache() {
+	chairByAuthTokenCacheMutex.Lock()
+	defer chairByAuthTokenCacheMutex.Unlock()
+	chairByAuthTokenCache = map[string]*Chair{}
+}
+
 func postInitialize(w http.ResponseWriter, r *http.Request) {
+	initCache()
 	ctx := r.Context()
 	req := &postInitializeRequest{}
 	if err := bindJSON(r, req); err != nil {
