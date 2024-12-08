@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
@@ -21,9 +23,12 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 空きイスとその座標を取得
-	tmp_freeChairs := []*Chair{}
-	if err := db.SelectContext(ctx, &tmp_freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT rides.id FROM ride_statuses JOIN rides ON ride_statuses.ride_id = rides.id WHERE rides.chair_id = chairs.id GROUP BY rides.id HAVING COUNT(*) < 6)"); err != nil {
+	// 空きイスを取得
+	chairs := []*Chair{}
+	if err := db.SelectContext(ctx, &chairs, `
+	SELECT * 
+	FROM chairs 
+	WHERE is_active = TRUE`); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -31,14 +36,50 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	// n + 1 しちゃうけどしゃあなし
-	freeChairs := []*Chair{}
-	for _, chair := range tmp_freeChairs {
-		isFree := true
-		if err := db.GetContext(ctx, &isFree, "SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE", chair.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+
+	// 椅子IDを収集
+	chairIDs := make([]string, len(chairs))
+	for i, chair := range chairs {
+		chairIDs[i] = chair.ID
+	}
+
+	// 椅子に関連するライドの状態を一括取得
+	rideStatuses := []struct {
+		ChairID   string `db:"chair_id"`
+		RideID    string `db:"ride_id"`
+		Completed bool   `db:"completed"`
+	}{}
+
+	query, args, err := sqlx.In(`
+	SELECT rides.chair_id, rides.id AS ride_id, 
+		   COUNT(ride_statuses.chair_sent_at) = 6 AS completed
+	FROM rides
+	JOIN ride_statuses ON ride_statuses.ride_id = rides.id
+	WHERE rides.chair_id IN (?)
+	GROUP BY rides.id`, chairIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	query = db.Rebind(query)
+
+	if err := db.SelectContext(ctx, &rideStatuses, query, args...); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	chairToCompletionStatus := make(map[string]bool)
+	for _, status := range rideStatuses {
+		if !status.Completed {
+			chairToCompletionStatus[status.ChairID] = false
+		} else if _, exists := chairToCompletionStatus[status.ChairID]; !exists {
+			chairToCompletionStatus[status.ChairID] = true
 		}
-		if isFree {
+	}
+
+	freeChairs := []*Chair{}
+	for _, chair := range chairs {
+		if chairToCompletionStatus[chair.ID] {
 			freeChairs = append(freeChairs, chair)
 		}
 	}
