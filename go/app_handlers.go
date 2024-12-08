@@ -211,10 +211,20 @@ func appGetRides(w http.ResponseWriter, r *http.Request) {
 	}
 
 	items := []getAppRidesResponseItem{}
+	ridesIDs := make([]string, len(rides))
+	for i, ride := range rides {
+		ridesIDs[i] = ride.ID
+	}
+	statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	for _, ride := range rides {
-		status, err := getLatestRideStatus(ctx, tx, ride.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+		status, ok := statusMap[ride.ID]
+		if !ok {
+			writeError(w, http.StatusInternalServerError, errors.New("ride status not found"))
 			return
 		}
 		if status != "COMPLETED" {
@@ -291,6 +301,41 @@ func getLatestRideStatus(ctx context.Context, tx executableGet, rideID string) (
 	return status, nil
 }
 
+func getLatestRideStatusBulk(ctx context.Context, tx executableGet, rideIDs []string) (map[string]string, error) {
+	if len(rideIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	statusMap := map[string]string{}
+	query, args, err := sqlx.In(`
+	SELECT ride_id, status FROM (
+		SELECT ride_id, status,
+			   ROW_NUMBER() OVER (PARTITION BY ride_id ORDER BY created_at DESC) as rn
+		FROM ride_statuses
+	) tmp
+	WHERE rn = 1 AND ride_id IN (?)
+	`, rideIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	query = tx.(*sqlx.Tx).Rebind(query)
+	rows, err := tx.(*sqlx.Tx).QueryxContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var rideID, status string
+		if err := rows.Scan(&rideID, &status); err != nil {
+			return nil, err
+		}
+		statusMap[rideID] = status
+	}
+
+	return statusMap, nil
+}
+
 func appPostRides(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := &appPostRidesRequest{}
@@ -320,13 +365,17 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 
 	continuingRideCount := 0
+	ridesIDs := make([]string, len(rides))
+	for i, ride := range rides {
+		ridesIDs[i] = ride.ID
+	}
+	statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	for _, ride := range rides {
-		status, err := getLatestRideStatus(ctx, tx, ride.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if status != "COMPLETED" {
+		if statusMap[ride.ID] != "COMPLETED" {
 			continuingRideCount++
 		}
 	}
@@ -911,13 +960,15 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		skip := false
-		for _, ride := range rides {
-			// 過去にライドが存在し、かつ、それが完了していない場合はスキップ
-			status, err := getLatestRideStatus(ctx, tx, ride.ID)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
+		ridesIDs := make([]string, len(rides))
+		for i, ride := range rides {
+			ridesIDs[i] = ride.ID
+		}
+		statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+		}
+		for _, status := range statusMap {
 			if status != "COMPLETED" {
 				skip = true
 				break
