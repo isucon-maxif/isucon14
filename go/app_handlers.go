@@ -313,20 +313,35 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	rides := []Ride{}
-	if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE user_id = ?`, user.ID); err != nil {
+	query := `
+SELECT r.*,
+	COALESCE(
+		(SELECT rs.status 
+			FROM ride_statuses rs 
+			WHERE rs.ride_id = r.id 
+			ORDER BY rs.created_at DESC 
+			LIMIT 1
+		),
+		''
+  ) as latest_status
+FROM rides r
+WHERE r.user_id = ?`
+
+	type RideWithStatus struct {
+		Ride
+		LatestStatus string `db:"latest_status"`
+	}
+
+	rides := []RideWithStatus{}
+	if err := tx.SelectContext(ctx, &rides, query, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
+	// 未完了のライドをカウント
 	continuingRideCount := 0
 	for _, ride := range rides {
-		status, err := getLatestRideStatus(ctx, tx, ride.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if status != "COMPLETED" {
+		if ride.LatestStatus != "COMPLETED" {
 			continuingRideCount++
 		}
 	}
