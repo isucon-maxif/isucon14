@@ -955,21 +955,22 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 	query = tx.Rebind(query)
 
-	rides := []*Ride{}
-	err = tx.SelectContext(ctx, &rides, query, args...)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	allRides := []*Ride{}
+	if err := tx.SelectContext(ctx, &allRides, query, args...); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	chairToRideIDs := make(map[string][]string)
-	for _, ride := range rides {
-		chairToRideIDs[ride.ChairID.String] = append(chairToRideIDs[ride.ChairID.String], ride.ID)
+	chairIDToRidesIDs := make(map[string][]string)
+	for _, ride := range allRides {
+		if ride.ChairID.Valid {
+			chairIDToRidesIDs[ride.ChairID.String] = append(chairIDToRidesIDs[ride.ChairID.String], ride.ID)
+		}
 	}
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
 	for _, chair := range chairs {
-		ridesIDs, exists := chairToRideIDs[chair.ID]
+		ridesIDs, exists := chairIDToRidesIDs[chair.ID]
 		if !exists {
 			continue
 		}
