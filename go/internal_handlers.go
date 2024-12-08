@@ -76,7 +76,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if bestChairIdx == -1 {
-			continue
+			break
 		}
 		isChairUsed[bestChairIdx] = true
 		if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", freeChairs[bestChairIdx].ID, ride.ID); err != nil {
