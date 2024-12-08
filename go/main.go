@@ -2,7 +2,9 @@ package main
 
 import (
 	crand "crypto/rand"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -172,6 +174,9 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 			chair.ID,
 		)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
