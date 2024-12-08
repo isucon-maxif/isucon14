@@ -22,13 +22,15 @@ import (
 var db *sqlx.DB
 
 func main() {
+	go func() {
+		standalone.Integrate(":6000")
+	}()
 	mux := setup()
 	slog.Info("Listening on :8080")
 	http.ListenAndServe(":8080", mux)
 }
 
 func setup() http.Handler {
-	go standalone.Integrate(":6000")
 	host := os.Getenv("ISUCON_DB_HOST")
 	if host == "" {
 		host = "127.0.0.1"

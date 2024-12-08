@@ -32,9 +32,12 @@ CREATE TABLE chairs
   access_token VARCHAR(255) NOT NULL COMMENT 'アクセストークン',
   created_at   DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '登録日時',
   updated_at   DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新日時',
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE (access_token)
 )
   COMMENT = '椅子情報テーブル';
+
+CREATE INDEX idx_chairs_owner_id ON chairs(owner_id);
 
 DROP TABLE IF EXISTS chair_locations;
 CREATE TABLE chair_locations
@@ -94,6 +97,9 @@ CREATE TABLE rides
 )
   COMMENT = 'ライド情報テーブル';
 
+CREATE INDEX idx_rides_chairid_updatedat ON rides(chair_id, updated_at DESC);
+CREATE INDEX idx_rides_userid_createdat ON rides(user_id, created_at DESC);
+
 DROP TABLE IF EXISTS ride_statuses;
 CREATE TABLE ride_statuses
 (
@@ -106,6 +112,9 @@ CREATE TABLE ride_statuses
   PRIMARY KEY (id)
 )
   COMMENT = 'ライドステータスの変更履歴テーブル';
+
+CREATE INDEX idx_ridestatuses_rideid_status ON ride_statuses(ride_id, status);
+CREATE INDEX idx_ridestatuses_rideid_createdat_chairsentat_appsentat ON ride_statuses(ride_id, created_at DESC, chair_sent_at, app_sent_at);
 
 DROP TABLE IF EXISTS owners;
 CREATE TABLE owners
@@ -134,3 +143,5 @@ CREATE TABLE coupons
   PRIMARY KEY (user_id, code)
 )
   COMMENT 'クーポンテーブル';
+
+CREATE INDEX idx_coupons_usedby ON coupons(used_by);
