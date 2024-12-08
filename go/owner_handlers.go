@@ -221,7 +221,9 @@ WHERE owner_id = ?
 		return
 	}
 
-	res := ownerGetChairResponse{}
+	res := ownerGetChairResponse{
+		Chairs: make([]ownerGetChairResponseChair, 0, len(chairs)),
+	}
 	for _, chair := range chairs {
 		c := ownerGetChairResponseChair{
 			ID:            chair.ID,
