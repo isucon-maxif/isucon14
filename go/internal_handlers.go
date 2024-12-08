@@ -68,7 +68,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		bestTime := 1e9
 
 		for chairidx, chair := range freeChairs {
-			if !chair.LocationLat.Valid || !chair.LocationLon.Valid {
+			if isChairUsed[chairidx] || !chair.LocationLat.Valid || !chair.LocationLon.Valid {
 				continue
 			}
 			pickupDist := abs(int(chair.LocationLat.Int32)-ride.PickupLatitude) + abs(int(chair.LocationLon.Int32)-ride.PickupLongitude)
