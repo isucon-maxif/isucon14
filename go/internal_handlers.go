@@ -12,7 +12,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// 待っているリクエストを取得
 	rides := []*Ride{}
-	if err := db.SelectContext(ctx, &rides, "SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at"); err != nil {
+	if err := db.SelectContext(ctx, &rides, "SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at FOR SHARE"); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -23,7 +23,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// 空きイスとその座標を取得
 	freeChairs := []*Chair{}
-	if err := db.SelectContext(ctx, &freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT rides.id FROM ride_statuses INNER JOIN rides ON ride_statuses.ride_id = rides.id WHERE rides.chair_id = chairs.id GROUP BY rides.id HAVING COUNT(*) < 6)"); err != nil {
+	if err := db.SelectContext(ctx, &freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT rides.id FROM ride_statuses JOIN rides ON ride_statuses.ride_id = rides.id WHERE rides.chair_id = chairs.id GROUP BY rides.id HAVING COUNT(*) < 6) FOR SHARE"); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -36,7 +36,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// イスの座標を取得
 	tmp := []*ChairLocation{}
-	if err := db.SelectContext(ctx, &tmp, "SELECT A.chair_id, A.latitude, A.longitude FROM chair_locations A INNER JOIN (SELECT chair_id, MAX(created_at) AS cat FROM chair_locations GROUP BY chair_id) B ON A.chair_id = B.chair_id AND A.created_at = B.cat"); err != nil {
+	if err := db.SelectContext(ctx, &tmp, "SELECT A.chair_id, A.latitude, A.longitude FROM chair_locations A INNER JOIN (SELECT chair_id, MAX(created_at) AS cat FROM chair_locations GROUP BY chair_id) B ON A.chair_id = B.chair_id AND A.created_at = B.cat FOR SHARE"); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -47,7 +47,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// イスの性能を取得
 	tmp2 := []*ChairModel{}
-	if err := db.SelectContext(ctx, &tmp2, "SELECT * FROM chair_models"); err != nil {
+	if err := db.SelectContext(ctx, &tmp2, "SELECT * FROM chair_models FOR SHARE"); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
