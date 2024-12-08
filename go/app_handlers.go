@@ -959,7 +959,7 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 	query = tx.Rebind(query)
 	allRides := []*Ride{}
-	if err := tx.GetContext(ctx, &allRides, query, args...); err != nil {
+	if err := tx.SelectContext(ctx, &allRides, query, args...); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
