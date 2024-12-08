@@ -43,8 +43,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	println("[DEBUG]", "rides", len(rides), "freeChairs", len(freeChairs))
-
 	// イスの座標を取得
 	tmp := []*ChairLocation{}
 	if err := db.SelectContext(ctx, &tmp, "SELECT A.chair_id, A.latitude, A.longitude FROM chair_locations A INNER JOIN (SELECT chair_id, MAX(created_at) AS cat FROM chair_locations GROUP BY chair_id) B ON A.chair_id = B.chair_id AND A.created_at = B.cat"); err != nil {
@@ -69,7 +67,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// マッチング
 	isChairUsed := map[int]bool{}
-	cnt := 0
 	for _, ride := range rides {
 		bestChairIdx := -1
 		bestChairTime := 1000000000.0
@@ -92,7 +89,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		if bestChairIdx == -1 {
 			continue
 		}
-		cnt++
 		isChairUsed[bestChairIdx] = true
 		if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", freeChairs[bestChairIdx].ID, ride.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -102,8 +98,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		delete(chairByAuthTokenCache, freeChairs[bestChairIdx].AccessToken)
 		chairByAuthTokenCacheMutex.Unlock()
 	}
-
-	println("[DEBUG]", "matched", cnt, "rides", len(rides), "freeChairs", len(freeChairs))
 
 	w.WriteHeader(http.StatusNoContent)
 }
