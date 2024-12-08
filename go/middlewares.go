@@ -16,6 +16,15 @@ func appAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		accessToken := c.Value
+		userByAuthTokenCacheMutex.RLock()
+		cached, ok := userByAuthTokenCache[accessToken]
+		userByAuthTokenCacheMutex.RUnlock()
+		if ok {
+			ctx = context.WithValue(ctx, "user", cached)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		user := &User{}
 		err = db.GetContext(ctx, user, "SELECT * FROM users WHERE access_token = ?", accessToken)
 		if err != nil {
@@ -26,6 +35,10 @@ func appAuthMiddleware(next http.Handler) http.Handler {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+
+		userByAuthTokenCacheMutex.Lock()
+		userByAuthTokenCache[accessToken] = user
+		userByAuthTokenCacheMutex.Unlock()
 
 		ctx = context.WithValue(ctx, "user", user)
 		next.ServeHTTP(w, r.WithContext(ctx))

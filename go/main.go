@@ -24,6 +24,8 @@ var (
 	db                         *sqlx.DB
 	chairByAuthTokenCache      = map[string]*Chair{}
 	chairByAuthTokenCacheMutex sync.RWMutex
+	userByAuthTokenCache      = map[string]*User{}
+	userByAuthTokenCacheMutex sync.RWMutex
 )
 
 func main() {
@@ -134,6 +136,9 @@ func initCache() {
 	chairByAuthTokenCacheMutex.Lock()
 	defer chairByAuthTokenCacheMutex.Unlock()
 	chairByAuthTokenCache = map[string]*Chair{}
+	userByAuthTokenCacheMutex.Lock()
+	defer userByAuthTokenCacheMutex.Unlock()
+	userByAuthTokenCache = map[string]*User{}
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
