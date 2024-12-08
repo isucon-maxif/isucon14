@@ -964,20 +964,16 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chairIDtoRides := make(map[string][]*Ride)
+	chairIDtoRidesIDs := make(map[string][]string)
 	for _, ride := range allRides {
-		chairIDtoRides[ride.ChairID.String] = append(chairIDtoRides[ride.ChairID.String], ride)
+		chairIDtoRidesIDs[ride.ChairID.String] = append(chairIDtoRidesIDs[ride.ChairID.String], ride.ID)
 	}
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
 	for _, chair := range chairs {
-		rides := chairIDtoRides[chair.ID]
 
 		skip := false
-		ridesIDs := make([]string, len(rides))
-		for i, ride := range rides {
-			ridesIDs[i] = ride.ID
-		}
+		ridesIDs := chairIDtoRidesIDs[chair.ID]
 		// TODO: getLatestRideStatusBulk 経由での N+1 解消
 		statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
 		if err != nil {
