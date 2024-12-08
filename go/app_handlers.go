@@ -993,14 +993,17 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		// 		},
 		// 	})
 		// }
-		if calculateDistance(coordinate.Latitude, coordinate.Longitude, chair.LocationLat, chair.LocationLon) <= distance {
+		if !chair.LocationLat.Valid || !chair.LocationLon.Valid {
+			continue
+		}
+		if calculateDistance(coordinate.Latitude, coordinate.Longitude, int(chair.LocationLat.Int32), int(chair.LocationLon.Int32)) <= distance {
 			nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
 				ID:    chair.ID,
 				Name:  chair.Name,
 				Model: chair.Model,
 				CurrentCoordinate: Coordinate{
-					Latitude:  chair.LocationLat,
-					Longitude: chair.LocationLon,
+					Latitude:  int(chair.LocationLat.Int32),
+					Longitude: int(chair.LocationLon.Int32),
 				},
 			})
 		}
