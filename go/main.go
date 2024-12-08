@@ -155,6 +155,37 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 最新イス座標取得
+	// init なので n+1 は許容
+	chairs := []*Chair{}
+	err := db.SelectContext(ctx, &chairs, "SELECT * FROM chairs")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	for _, chair := range chairs {
+		chairLocation := &ChairLocation{}
+		err = db.GetContext(
+			ctx,
+			chairLocation,
+			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
+			chair.ID,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		_, err = db.ExecContext(
+			ctx,
+			`UPDATE chairs SET location_lat = ?, location_lon = ? WHERE id = ?`,
+			chairLocation.Latitude, chairLocation.Longitude, chair.ID,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+
 	go func() {
 		if _, err := http.Get("http://localhost:9000/api/group/collect"); err != nil {
 			log.Printf("failed to request to pprotein: %v", err)
