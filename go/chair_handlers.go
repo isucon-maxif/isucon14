@@ -122,7 +122,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := tx.ExecContext(
 		ctx,
-		`UPDATE chairs SET (location_lat, location_lon) = (?, ?) WHERE id = ?`,
+		`UPDATE chairs SET location_lat = ?, location_lon = ? WHERE id = ?`,
 		req.Latitude, req.Longitude, chair.ID,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
