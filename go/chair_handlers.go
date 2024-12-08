@@ -132,7 +132,7 @@ var (
 )
 
 func batchInsertWorker() {
-	ticker := time.NewTicker(300 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
