@@ -149,22 +149,56 @@ CREATE TABLE coupons
 CREATE INDEX idx_coupons_usedby ON coupons(used_by);
 
 
-CREATE TABLE chair_distance_cache (
-    chair_id VARCHAR(255) PRIMARY KEY,
-    total_distance INT NOT NULL,
+CREATE TABLE chair_distances (
+    chair_id INT PRIMARY KEY,
+    total_distance DOUBLE NOT NULL DEFAULT 0,
     total_distance_updated_at DATETIME NOT NULL
 );
 
-INSERT INTO chair_distance_cache (chair_id, total_distance, total_distance_updated_at)
-SELECT chair_id,
-       SUM(IFNULL(distance, 0)) AS total_distance,
-       MAX(created_at)          AS total_distance_updated_at
-FROM (SELECT chair_id,
-             created_at,
-             ABS(latitude - LAG(latitude) OVER (PARTITION BY chair_id ORDER BY created_at)) +
-             ABS(longitude - LAG(longitude) OVER (PARTITION BY chair_id ORDER BY created_at)) AS distance
-      FROM chair_locations) tmp
-GROUP BY chair_id
-ON DUPLICATE KEY UPDATE
-    total_distance = VALUES(total_distance),
-    total_distance_updated_at = VALUES(total_distance_updated_at);
+
+DELIMITER //
+
+CREATE FUNCTION calculate_distance(lat1 DOUBLE, lon1 DOUBLE, lat2 DOUBLE, lon2 DOUBLE)
+RETURNS DOUBLE
+DETERMINISTIC
+BEGIN
+    RETURN ABS(lat1 - lat2) + ABS(lon1 - lon2);
+END; //
+
+DELIMITER ;
+
+DELIMITER //
+
+CREATE TRIGGER update_chair_distances
+AFTER INSERT ON chair_locations
+FOR EACH ROW
+BEGIN
+    DECLARE prev_latitude DOUBLE;
+    DECLARE prev_longitude DOUBLE;
+    DECLARE prev_created_at DATETIME;
+    DECLARE distance DOUBLE;
+
+    -- 直前の位置情報を取得
+    SELECT latitude, longitude, created_at
+    INTO prev_latitude, prev_longitude, prev_created_at
+    FROM chair_locations
+    WHERE chair_id = NEW.chair_id
+    ORDER BY created_at DESC
+    LIMIT 1 OFFSET 1;
+
+    -- 距離を計算
+    SET distance = calculate_distance(prev_latitude, prev_longitude, NEW.latitude, NEW.longitude);
+
+    -- chair_distancesを更新
+    IF EXISTS (SELECT 1 FROM chair_distances WHERE chair_id = NEW.chair_id) THEN
+        UPDATE chair_distances
+        SET total_distance = total_distance + distance,
+            total_distance_updated_at = NEW.created_at
+        WHERE chair_id = NEW.chair_id;
+    ELSE
+        INSERT INTO chair_distances (chair_id, total_distance, total_distance_updated_at)
+        VALUES (NEW.chair_id, distance, NEW.created_at);
+    END IF;
+END; //
+
+DELIMITER ;
