@@ -956,13 +956,29 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
-	for _, chair := range chairs {
-		ridesIDs := []string{}
-		if err := tx.SelectContext(ctx, &ridesIDs, `SELECT id FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
 
+	ridesIDsMap := map[string][]string{}
+	chairIds := make([]string, len(chairs))
+	for i, chair := range chairs {
+		chairIds[i] = chair.ID
+	}
+	rides := []Ride{}
+	query, args, err := sqlx.In(`SELECT * FROM rides WHERE chair_id IN (?) ORDER BY created_at DESC`, chairIds)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	query = tx.Rebind(query)
+	if err := tx.SelectContext(ctx, &rides, query, args...); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	for _, ride := range rides {
+		ridesIDsMap[ride.ChairID.String] = append(ridesIDsMap[ride.ChairID.String], ride.ID)
+	}
+
+	for _, chair := range chairs {
+		ridesIDs := ridesIDsMap[chair.ID]
 		skip := false
 		statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
 		if err != nil {
