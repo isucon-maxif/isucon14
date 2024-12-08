@@ -971,6 +971,9 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
 	for _, chair := range chairs {
+		if !chair.IsActive {
+			continue
+		}
 
 		skip := false
 		ridesIDs := chairIDtoRidesIDs[chair.ID]
