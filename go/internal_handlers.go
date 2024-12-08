@@ -43,17 +43,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// イスの座標を取得
-	tmp := []*ChairLocation{}
-	if err := db.SelectContext(ctx, &tmp, "SELECT A.chair_id, A.latitude, A.longitude FROM chair_locations A INNER JOIN (SELECT chair_id, MAX(created_at) AS cat FROM chair_locations GROUP BY chair_id) B ON A.chair_id = B.chair_id AND A.created_at = B.cat"); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	chairLocations := map[string]*ChairLocation{}
-	for _, loc := range tmp {
-		chairLocations[loc.ChairID] = loc
-	}
-
 	// イスの性能を取得
 	tmp2 := []*ChairModel{}
 	if err := db.SelectContext(ctx, &tmp2, "SELECT * FROM chair_models"); err != nil {
@@ -74,11 +63,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			if isChairUsed[i] {
 				continue
 			}
-			loc, ok := chairLocations[chair.ID]
-			if !ok {
-				continue
-			}
-			dist := abs(loc.Latitude-ride.PickupLatitude) + abs(loc.Longitude-ride.PickupLongitude)
+			dist := abs(chair.LocationLat-ride.PickupLatitude) + abs(chair.LocationLon-ride.PickupLongitude)
 			speed := chairModels[chair.Model]
 			time := float64(dist) / float64(speed)
 			if time < bestChairTime {

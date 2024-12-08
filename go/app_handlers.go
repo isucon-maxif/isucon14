@@ -967,29 +967,40 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 最新の位置情報を取得
-		chairLocation := &ChairLocation{}
-		err = tx.GetContext(
-			ctx,
-			chairLocation,
-			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
-			chair.ID,
-		)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
+		// chairLocation := &ChairLocation{}
+		// err = tx.GetContext(
+		// 	ctx,
+		// 	chairLocation,
+		// 	`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
+		// 	chair.ID,
+		// )
+		// if err != nil {
+		// 	if errors.Is(err, sql.ErrNoRows) {
+		// 		continue
+		// 	}
+		// 	writeError(w, http.StatusInternalServerError, err)
+		// 	return
+		// }
 
-		if calculateDistance(coordinate.Latitude, coordinate.Longitude, chairLocation.Latitude, chairLocation.Longitude) <= distance {
+		// if calculateDistance(coordinate.Latitude, coordinate.Longitude, chairLocation.Latitude, chairLocation.Longitude) <= distance {
+		// 	nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
+		// 		ID:    chair.ID,
+		// 		Name:  chair.Name,
+		// 		Model: chair.Model,
+		// 		CurrentCoordinate: Coordinate{
+		// 			Latitude:  chairLocation.Latitude,
+		// 			Longitude: chairLocation.Longitude,
+		// 		},
+		// 	})
+		// }
+		if calculateDistance(coordinate.Latitude, coordinate.Longitude, chair.LocationLat, chair.LocationLon) <= distance {
 			nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
 				ID:    chair.ID,
 				Name:  chair.Name,
 				Model: chair.Model,
 				CurrentCoordinate: Coordinate{
-					Latitude:  chairLocation.Latitude,
-					Longitude: chairLocation.Longitude,
+					Latitude:  chair.LocationLat,
+					Longitude: chair.LocationLon,
 				},
 			})
 		}
