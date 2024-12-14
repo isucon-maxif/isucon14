@@ -180,6 +180,10 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		if len(chairLocations) == 0 {
+			continue
+		}
+
 		total_distance := 0
 		for i := range chairLocations {
 			if i > 0 {
