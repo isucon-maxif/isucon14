@@ -2,9 +2,7 @@ package main
 
 import (
 	crand "crypto/rand"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -167,24 +165,36 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, chair := range chairs {
-		chairLocation := &ChairLocation{}
-		err = db.GetContext(
+		chairLocations := []*ChairLocation{}
+		err = db.SelectContext(
 			ctx,
-			chairLocation,
-			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
+			&chairLocations,
+			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at ASC`,
 			chair.ID,
 		)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		if len(chairLocations) == 0 {
+			continue
+		}
+
+		totalDistance := 0
+		for i := 1; i < len(chairLocations); i++ {
+			totalDistance += calculateDistance(
+				chairLocations[i-1].Latitude,
+				chairLocations[i-1].Longitude,
+				chairLocations[i].Latitude,
+				chairLocations[i].Longitude,
+			)
+		}
+		lastChairLoc := chairLocations[len(chairLocations)-1]
+
 		_, err = db.ExecContext(
 			ctx,
-			`UPDATE chairs SET location_lat = ?, location_lon = ? WHERE id = ?`,
-			chairLocation.Latitude, chairLocation.Longitude, chair.ID,
+			`UPDATE chairs SET location_lat = ?, location_lon = ?, total_distance = ?, total_distance_updated_at = ? WHERE id = ?`,
+			lastChairLoc.Latitude, lastChairLoc.Longitude, totalDistance, lastChairLoc.CreatedAt, chair.ID,
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
