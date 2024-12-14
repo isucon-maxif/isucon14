@@ -168,7 +168,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		err = db.SelectContext(
 			ctx,
 			&chairLocations,
-			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC`,
+			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at ASC`,
 			chair.ID,
 		)
 		if err != nil {
@@ -186,17 +186,19 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		for i := range chairLocations {
 			if i > 0 {
 				total_distance += calculateDistance(
-					chairLocations[i].Latitude,
-					chairLocations[i].Longitude,
 					chairLocations[i-1].Latitude,
 					chairLocations[i-1].Longitude,
+					chairLocations[i].Latitude,
+					chairLocations[i].Longitude,
 				)
 			}
 		}
+		lastChairLoc := chairLocations[len(chairLocations)-1]
+
 		_, err = db.ExecContext(
 			ctx,
-			`UPDATE chairs SET location_lat = ?, location_lon = ?, total_distance = ? WHERE id = ?`,
-			chairLocations[0].Latitude, chairLocations[0].Longitude, total_distance, chair.ID,
+			`UPDATE chairs SET location_lat = ?, location_lon = ?, total_distance = ?, total_distance_updated_at = ? WHERE id = ?`,
+			lastChairLoc.Latitude, lastChairLoc.Longitude, total_distance, lastChairLoc.CreatedAt, chair.ID,
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
