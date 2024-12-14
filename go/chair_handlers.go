@@ -131,13 +131,10 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ride := &Ride{}
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-	} else {
+	rideCacheByChairIDMutex.RLock()
+	ride, ok := rideCacheByChairID[chair.ID]
+	rideCacheByChairIDMutex.RUnlock()
+	if ok {
 		status, err := getLatestRideStatus(ctx, tx, ride.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)

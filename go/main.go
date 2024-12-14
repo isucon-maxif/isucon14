@@ -24,6 +24,8 @@ var (
 	db                         *sqlx.DB
 	chairByAuthTokenCache      = map[string]*Chair{}
 	chairByAuthTokenCacheMutex sync.RWMutex
+	rideCacheByChairID         = map[string]*Ride{}
+	rideCacheByChairIDMutex    sync.RWMutex
 )
 
 func main() {
@@ -73,7 +75,7 @@ func setup() http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	_db.SetMaxOpenConns(10)
+	_db.SetMaxOpenConns(1000)
 	db = _db
 
 	mux := chi.NewRouter()
@@ -135,6 +137,9 @@ func initCache() {
 	chairByAuthTokenCacheMutex.Lock()
 	defer chairByAuthTokenCacheMutex.Unlock()
 	chairByAuthTokenCache = map[string]*Chair{}
+	rideCacheByChairIDMutex.Lock()
+	defer rideCacheByChairIDMutex.Unlock()
+	rideCacheByChairID = map[string]*Ride{}
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +206,37 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	// ライドの状態を更新
+	rows, err := db.QueryContext(ctx, "SELECT * FROM rides")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer rows.Close()
+	rideCacheByChairIDMutex.Lock()
+	for rows.Next() {
+		ride := &Ride{}
+		if err := rows.Scan(
+			&ride.ID,
+			&ride.UserID,
+			&ride.ChairID,
+			&ride.PickupLatitude,
+			&ride.PickupLongitude,
+			&ride.DestinationLatitude,
+			&ride.DestinationLongitude,
+			&ride.Evaluation,
+			&ride.CreatedAt,
+			&ride.UpdatedAt,
+		); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if ride.ChairID.Valid {
+			rideCacheByChairID[ride.ChairID.String] = ride
+		}
+	}
+	rideCacheByChairIDMutex.Unlock()
 
 	go func() {
 		if _, err := http.Get("http://localhost:9000/api/group/collect"); err != nil {
