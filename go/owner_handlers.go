@@ -123,9 +123,8 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	query, args, err := sqlx.In(`
 		SELECT rides.*
 		FROM rides
-		JOIN ride_statuses ON rides.id = ride_statuses.ride_id
 		WHERE chair_id IN (?)
-	  	AND status = 'COMPLETED'
+		AND evaluation IS NOT NULL
 	  	AND updated_at BETWEEN ? AND ? + INTERVAL 999 MICROSECOND
 	`, chairIDs, since, until)
 	if err != nil {
