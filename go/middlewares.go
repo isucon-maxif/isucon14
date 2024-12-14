@@ -65,14 +65,14 @@ func chairAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		accessToken := c.Value
-		chairByAuthTokenCacheMutex.RLock()
-		cached, ok := chairByAuthTokenCache[accessToken]
-		chairByAuthTokenCacheMutex.RUnlock()
-		if ok {
-			ctx = context.WithValue(ctx, "chair", cached)
-			next.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
+		// chairByAuthTokenCacheMutex.RLock()
+		// cached, ok := chairByAuthTokenCache[accessToken]
+		// chairByAuthTokenCacheMutex.RUnlock()
+		// if ok {
+		// 	ctx = context.WithValue(ctx, "chair", cached)
+		// 	next.ServeHTTP(w, r.WithContext(ctx))
+		// 	return
+		// }
 
 		chair := &Chair{}
 		err = db.GetContext(ctx, chair, "SELECT * FROM chairs WHERE access_token = ?", accessToken)
@@ -85,9 +85,9 @@ func chairAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		chairByAuthTokenCacheMutex.Lock()
-		chairByAuthTokenCache[accessToken] = chair
-		chairByAuthTokenCacheMutex.Unlock()
+		// chairByAuthTokenCacheMutex.Lock()
+		// chairByAuthTokenCache[accessToken] = chair
+		// chairByAuthTokenCacheMutex.Unlock()
 
 		ctx = context.WithValue(ctx, "chair", chair)
 		next.ServeHTTP(w, r.WithContext(ctx))
