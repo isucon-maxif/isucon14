@@ -90,6 +90,9 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		rideCacheByChairIDMutex.Lock()
+		rideCacheByChairID[freeChairs[bestChairIdx].ID] = ride
+		rideCacheByChairIDMutex.Unlock()
 		chairByAuthTokenCacheMutex.Lock()
 		delete(chairByAuthTokenCache, freeChairs[bestChairIdx].AccessToken)
 		chairByAuthTokenCacheMutex.Unlock()
