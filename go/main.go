@@ -4,7 +4,6 @@ import (
 	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -233,12 +232,6 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rideCacheByChairIDMutex.Unlock()
-
-	go func() {
-		if _, err := http.Get("http://localhost:9000/api/group/collect"); err != nil {
-			log.Printf("failed to request to pprotein: %v", err)
-		}
-	}()
 
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
 }
