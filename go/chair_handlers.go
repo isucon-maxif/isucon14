@@ -116,7 +116,10 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	distance := calculateDistance(int(chair.LocationLat.Int32), int(chair.LocationLon.Int32), req.Latitude, req.Longitude)
+	distance := 0
+	if chair.LocationLat.Valid && chair.LocationLon.Valid {
+		distance = calculateDistance(int(chair.LocationLat.Int32), int(chair.LocationLon.Int32), req.Latitude, req.Longitude)
+	}
 	totalDistanceUpdatedAt := time.Now()
 
 	if _, err := tx.ExecContext(

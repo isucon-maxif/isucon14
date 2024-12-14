@@ -2,9 +2,7 @@ package main
 
 import (
 	crand "crypto/rand"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -174,9 +172,6 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 			chair.ID,
 		)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -184,23 +179,21 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		total_distance := 0
-		for i := range chairLocations {
-			if i > 0 {
-				total_distance += calculateDistance(
-					chairLocations[i-1].Latitude,
-					chairLocations[i-1].Longitude,
-					chairLocations[i].Latitude,
-					chairLocations[i].Longitude,
-				)
-			}
+		totalDistance := 0
+		for i := 1; i < len(chairLocations); i++ {
+			totalDistance += calculateDistance(
+				chairLocations[i-1].Latitude,
+				chairLocations[i-1].Longitude,
+				chairLocations[i].Latitude,
+				chairLocations[i].Longitude,
+			)
 		}
 		lastChairLoc := chairLocations[len(chairLocations)-1]
 
 		_, err = db.ExecContext(
 			ctx,
 			`UPDATE chairs SET location_lat = ?, location_lon = ?, total_distance = ?, total_distance_updated_at = ? WHERE id = ?`,
-			lastChairLoc.Latitude, lastChairLoc.Longitude, total_distance, lastChairLoc.CreatedAt, chair.ID,
+			lastChairLoc.Latitude, lastChairLoc.Longitude, totalDistance, lastChairLoc.CreatedAt, chair.ID,
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
