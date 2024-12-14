@@ -151,3 +151,4 @@ CREATE TABLE coupons
   COMMENT 'クーポンテーブル';
 
 CREATE INDEX idx_coupons_usedby ON coupons(used_by);
+CREATE INDEX idx_coupons_code ON coupons(code);
