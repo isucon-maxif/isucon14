@@ -2,7 +2,9 @@ package main
 
 import (
 	crand "crypto/rand"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -154,6 +156,40 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	if _, err := db.ExecContext(ctx, "UPDATE settings SET value = ? WHERE name = 'payment_gateway_url'", req.PaymentServer); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	// 最新イス座標取得
+	// init なので n+1 は許容
+	chairs := []*Chair{}
+	err := db.SelectContext(ctx, &chairs, "SELECT * FROM chairs")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	for _, chair := range chairs {
+		chairLocation := &ChairLocation{}
+		err = db.GetContext(
+			ctx,
+			chairLocation,
+			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
+			chair.ID,
+		)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		_, err = db.ExecContext(
+			ctx,
+			`UPDATE chairs SET location_lat = ?, location_lon = ? WHERE id = ?`,
+			chairLocation.Latitude, chairLocation.Longitude, chair.ID,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
 
 	go func() {

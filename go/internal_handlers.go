@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"sort"
 )
 
 // このAPIをインスタンス内から一定間隔で叩かせることで、椅子とライドをマッチングさせる
@@ -43,17 +44,6 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// イスの座標を取得
-	tmp := []*ChairLocation{}
-	if err := db.SelectContext(ctx, &tmp, "SELECT A.chair_id, A.latitude, A.longitude FROM chair_locations A INNER JOIN (SELECT chair_id, MAX(created_at) AS cat FROM chair_locations GROUP BY chair_id) B ON A.chair_id = B.chair_id AND A.created_at = B.cat"); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	chairLocations := map[string]*ChairLocation{}
-	for _, loc := range tmp {
-		chairLocations[loc.ChairID] = loc
-	}
-
 	// イスの性能を取得
 	tmp2 := []*ChairModel{}
 	if err := db.SelectContext(ctx, &tmp2, "SELECT * FROM chair_models"); err != nil {
@@ -66,29 +56,35 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// マッチング
-	isChairUsed := map[int]bool{}
+	sort.Slice(rides, func(i, j int) bool {
+		iDist := abs(rides[i].PickupLatitude-rides[i].DestinationLatitude) + abs(rides[i].PickupLongitude-rides[i].DestinationLongitude)
+		jDist := abs(rides[j].PickupLatitude-rides[j].DestinationLatitude) + abs(rides[j].PickupLongitude-rides[j].DestinationLongitude)
+		return iDist > jDist
+	})
+	isChairUsed := make([]bool, len(freeChairs))
+
 	for _, ride := range rides {
 		bestChairIdx := -1
-		bestChairTime := 1000000000.0
-		for i, chair := range freeChairs {
-			if isChairUsed[i] {
+		bestTime := 1e9
+
+		for chairidx, chair := range freeChairs {
+			if isChairUsed[chairidx] || !chair.LocationLat.Valid || !chair.LocationLon.Valid {
 				continue
 			}
-			loc, ok := chairLocations[chair.ID]
-			if !ok {
-				continue
-			}
-			dist := abs(loc.Latitude-ride.PickupLatitude) + abs(loc.Longitude-ride.PickupLongitude)
+			pickupDist := abs(int(chair.LocationLat.Int32)-ride.PickupLatitude) + abs(int(chair.LocationLon.Int32)-ride.PickupLongitude)
+			moveDist := abs(ride.PickupLatitude-ride.DestinationLatitude) + abs(ride.PickupLongitude-ride.DestinationLongitude)
 			speed := chairModels[chair.Model]
-			time := float64(dist) / float64(speed)
-			if time < bestChairTime {
-				bestChairTime = time
-				bestChairIdx = i
+			time := float64(pickupDist+moveDist*10) / float64(speed)
+			if time < bestTime {
+				bestTime = time
+				bestChairIdx = chairidx
 			}
 		}
+
 		if bestChairIdx == -1 {
 			continue
 		}
+
 		isChairUsed[bestChairIdx] = true
 		if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", freeChairs[bestChairIdx].ID, ride.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)

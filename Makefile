@@ -6,16 +6,31 @@ ifeq ($(SERVER),)
     $(error SERVER env is not set)
 endif
 
+# === 恐らく変更不要 ===
+
 NGINX_ACCESS_LOG:=/var/log/nginx/access.ndjson
 NGINX_CONF:=/etc/nginx
 
 MYSQL_SLOW_LOG:=/var/log/mysql/mysql-slow.log
 MYSQL_CONF:=/etc/mysql
 
-APP:=/home/isucon/webapp/go
+# =====================
+
+
+# === 変更が必要 ===
+
+HOME:=/home/isucon
+ENV_FILE:=env.sh
+ENV_PATH:=$(HOME)/$(ENV_FILE)
+WEBAPP:=$(HOME)/webapp
+APP:=$(WEBAPP)/go
 APP_BINARY:=isuride
 
+SERVER_ETC:=$(WEBAPP)/etc/$(SERVER)
+
 SERVICE:=isuride-go.service
+
+# =====================
 
 PPROF_EXEC_PORT:=6060
 PPROF_WEBUI_PORT:=1080
@@ -27,7 +42,7 @@ rotate-all: rotate-access-log rotate-slow-log
 .PHONY: rotate-access-log
 rotate-access-log:
 	echo "Rotating access log"
-	if [ ! -d etc/$(SERVER)/nginx ]; then echo "nginx not configured"; exit 0; fi
+	if [ ! -d $(SERVER_ETC)/nginx ]; then echo "nginx not configured"; exit 0; fi
 	if [ ! -f $(NGINX_ACCESS_LOG) ]; then echo "access log not found"; exit 0; fi
 	sudo mv $(NGINX_ACCESS_LOG) $(NGINX_ACCESS_LOG).$(shell date +%Y%m%d)
 	sudo systemctl restart nginx
@@ -35,7 +50,7 @@ rotate-access-log:
 .PHONY: rotate-slow-log
 rotate-slow-log:
 	echo "Rotating slow log"
-	if [ ! -d etc/$(SERVER)/mysql ]; then echo "mysql not configured"; exit 0; fi
+	if [ ! -d $(SERVER_ETC)/mysql ]; then echo "mysql not configured"; exit 0; fi
 	if [ ! -f $(MYSQL_SLOW_LOG) ]; then echo "slow log not found"; exit 0; fi
 	sudo mv $(MYSQL_SLOW_LOG) $(MYSQL_SLOW_LOG).$(shell date +%Y%m%d)
 	sudo systemctl restart mysql
@@ -43,19 +58,25 @@ rotate-slow-log:
 
 
 .PHONY: dump-all
-dump-all: dump-nginx dump-mysql
+dump-all: dump-env dump-nginx dump-mysql
 
 .PHONY: dump-nginx
 dump-nginx:
 	echo "dump nginx conf"
-	mkdir -p ./etc/$(SERVER)
-	cp -r $(NGINX_CONF) ./etc/$(SERVER)
+	mkdir -p $(SERVER_ETC)
+	cp -r $(NGINX_CONF) $(SERVER_ETC)
 
 .PHONY: dump-mysql
 dump-mysql:
 	echo "dump nginx conf"
-	mkdir -p ./etc/$(SERVER)
-	cp -r $(MYSQL_CONF) ./etc/$(SERVER)
+	mkdir -p $(SERVER_ETC)
+	cp -r $(MYSQL_CONF) $(SERVER_ETC)
+
+.PHONY: dump-env
+dump-env:
+	echo "dump env"
+	mkdir -p $(SERVER_ETC)
+	cp $(ENV_PATH) $(SERVER_ETC)
 
 
 .PHONY: alp
@@ -75,24 +96,27 @@ pprof:
 
 
 .PHONY: deploy-all
-deploy-all: conf-deploy app-deploy
+deploy-all: env-deploy nginx-deploy mysql-deploy app-deploy
 
-.PHONY: conf-deploy
-conf-deploy: nginx-conf-deploy mysql-conf-deploy
+.PHONY: env-deploy
+env-deploy:
+	echo "env deploy"
+	if [ ! -f $(SERVER_ETC)/$(ENV_FILE) ]; then echo "env not configured"; exit 1; fi
+	cp -f $(SERVER_ETC)/$(ENV_FILE) $(ENV_PATH)
 
-.PHONY: nginx-conf-deploy
-nginx-conf-deploy:
+.PHONY: nginx-deploy
+nginx-deploy:
 	echo "nginx conf deploy"
-	if [ ! -d etc/$(SERVER)/nginx ]; then echo "nginx not configured"; exit 1; fi
-	sudo cp -r etc/$(SERVER)/nginx/* $(NGINX_CONF)
+	if [ ! -d $(SERVER_ETC)/nginx ]; then echo "nginx not configured"; exit 1; fi
+	sudo cp -r $(SERVER_ETC)/nginx/* $(NGINX_CONF)
 	sudo nginx -t
 	sudo systemctl restart nginx
 
-.PHONY: mysql-conf-deploy
-mysql-conf-deploy:
+.PHONY: mysql-deploy
+mysql-deploy:
 	echo "mysql conf deploy"
-	if [ ! -d etc/$(SERVER)/mysql ]; then echo "mysql not configured"; exit 1; fi
-	sudo cp -r etc/$(SERVER)/mysql/* $(MYSQL_CONF)
+	if [ ! -d $(SERVER_ETC)/mysql ]; then echo "mysql not configured"; exit 1; fi
+	sudo cp -r $(SERVER_ETC)/mysql/* $(MYSQL_CONF)
 	sudo systemctl restart mysql
 
 .PHONY: app-deploy
@@ -100,3 +124,4 @@ app-deploy:
 	echo "app deploy"
 	cd $(APP) && go build -o $(APP_BINARY) *.go
 	sudo systemctl restart $(SERVICE)
+

@@ -358,24 +358,20 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	rides := []Ride{}
-	if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE user_id = ?`, user.ID); err != nil {
+	ridesIDs := []string{}
+	if err := tx.SelectContext(ctx, &ridesIDs, `SELECT id FROM rides WHERE user_id = ?`, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	continuingRideCount := 0
-	ridesIDs := make([]string, len(rides))
-	for i, ride := range rides {
-		ridesIDs[i] = ride.ID
-	}
 	statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	for _, ride := range rides {
-		if statusMap[ride.ID] != "COMPLETED" {
+	for _, rideID := range ridesIDs {
+		if statusMap[rideID] != "COMPLETED" {
 			continuingRideCount++
 		}
 	}
@@ -824,19 +820,31 @@ func getChairStats(ctx context.Context, tx *sqlx.Tx, chairID string) (appGetNoti
 		return stats, err
 	}
 
+	rideIDs := make([]string, len(rides))
+	for i := range rides {
+		rideIDs[i] = rides[i].ID
+	}
+
+	query, args, err := sqlx.In("SELECT * FROM ride_statuses WHERE ride_id IN (?)", rideIDs)
+	if err != nil {
+		return stats, err
+	}
+	query = tx.Rebind(query)
+
+	allRideStatuses := []RideStatus{}
+	if err := tx.SelectContext(ctx, &allRideStatuses, query, args...); err != nil {
+		return stats, err
+	}
+
+	rideStatusesMap := make(map[string][]RideStatus)
+	for _, rideStatuses := range allRideStatuses {
+		rideStatusesMap[rideStatuses.RideID] = append(rideStatusesMap[rideStatuses.RideID], rideStatuses)
+	}
+
 	totalRideCount := 0
 	totalEvaluation := 0.0
 	for _, ride := range rides {
-		rideStatuses := []RideStatus{}
-		err = tx.SelectContext(
-			ctx,
-			&rideStatuses,
-			`SELECT * FROM ride_statuses WHERE ride_id = ? ORDER BY created_at`,
-			ride.ID,
-		)
-		if err != nil {
-			return stats, err
-		}
+		rideStatuses := rideStatusesMap[ride.ID]
 
 		var arrivedAt, pickupedAt *time.Time
 		var isCompleted bool
@@ -948,23 +956,51 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nearbyChairs := []appGetNearbyChairsResponseChair{}
-	for _, chair := range chairs {
-		if !chair.IsActive {
-			continue
-		}
 
-		rides := []*Ride{}
-		if err := tx.SelectContext(ctx, &rides, `SELECT * FROM rides WHERE chair_id = ? ORDER BY created_at DESC`, chair.ID); err != nil {
+	ridesIDsMap := map[string][]string{}
+	chairIds := make([]string, len(chairs))
+	for i, chair := range chairs {
+		chairIds[i] = chair.ID
+	}
+	rides := []Ride{}
+	if len(chairIds) > 0 {
+		query, args, err := sqlx.In(`SELECT * FROM rides WHERE chair_id IN (?) ORDER BY created_at DESC`, chairIds)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-
-		skip := false
-		ridesIDs := make([]string, len(rides))
-		for i, ride := range rides {
-			ridesIDs[i] = ride.ID
+		query = tx.Rebind(query)
+		if err := tx.SelectContext(ctx, &rides, query, args...); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
 		}
-		statusMap, err := getLatestRideStatusBulk(ctx, tx, ridesIDs)
+		for _, ride := range rides {
+			ridesIDsMap[ride.ChairID.String] = append(ridesIDsMap[ride.ChairID.String], ride.ID)
+		}
+	}
+
+	allRidesIDs := []string{}
+	for _, ridesIDs := range ridesIDsMap {
+		allRidesIDs = append(allRidesIDs, ridesIDs...)
+	}
+
+	allStatusMap, err := getLatestRideStatusBulk(ctx, tx, allRidesIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+	}
+
+	for _, chair := range chairs {
+		ridesIDs := ridesIDsMap[chair.ID]
+		skip := false
+		statusMap := make(map[string]string, len(ridesIDs))
+		for _, rideID := range ridesIDs {
+			status, ok := allStatusMap[rideID]
+			if !ok {
+				writeError(w, http.StatusInternalServerError, errors.New("ride status not found"))
+				return
+			}
+			statusMap[rideID] = status
+		}
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 		}
@@ -978,30 +1014,17 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// 最新の位置情報を取得
-		chairLocation := &ChairLocation{}
-		err = tx.GetContext(
-			ctx,
-			chairLocation,
-			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC LIMIT 1`,
-			chair.ID,
-		)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
+		if !chair.LocationLat.Valid || !chair.LocationLon.Valid {
+			continue
 		}
-
-		if calculateDistance(coordinate.Latitude, coordinate.Longitude, chairLocation.Latitude, chairLocation.Longitude) <= distance {
+		if calculateDistance(coordinate.Latitude, coordinate.Longitude, int(chair.LocationLat.Int32), int(chair.LocationLon.Int32)) <= distance {
 			nearbyChairs = append(nearbyChairs, appGetNearbyChairsResponseChair{
 				ID:    chair.ID,
 				Name:  chair.Name,
 				Model: chair.Model,
 				CurrentCoordinate: Coordinate{
-					Latitude:  chairLocation.Latitude,
-					Longitude: chairLocation.Longitude,
+					Latitude:  int(chair.LocationLat.Int32),
+					Longitude: int(chair.LocationLon.Int32),
 				},
 			})
 		}
