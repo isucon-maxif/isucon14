@@ -167,7 +167,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, chair := range chairs {
 		chairLocations := []*ChairLocation{}
-		err = db.GetContext(
+		err = db.SelectContext(
 			ctx,
 			&chairLocations,
 			`SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at DESC`,
