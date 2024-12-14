@@ -71,9 +71,16 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			if isChairUsed[chairidx] || !chair.LocationLat.Valid || !chair.LocationLon.Valid {
 				continue
 			}
+
 			pickupDist := abs(int(chair.LocationLat.Int32)-ride.PickupLatitude) + abs(int(chair.LocationLon.Int32)-ride.PickupLongitude)
 			moveDist := abs(ride.PickupLatitude-ride.DestinationLatitude) + abs(ride.PickupLongitude-ride.DestinationLongitude)
 			speed := chairModels[chair.Model]
+
+			// もし移動距離が 200 以上なら、街間の移動とみなして無視する (サービス撤退の意)
+			if moveDist >= 200 {
+				continue
+			}
+
 			time := float64(pickupDist+moveDist*10) / float64(speed)
 			if time < bestTime {
 				bestTime = time
