@@ -112,11 +112,11 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	if err := tx.GetContext(ctx, &chair, "SELECT * FROM chairs WHERE id = ?", chair.ID); err != nil {
+	if err := tx.GetContext(ctx, chair, "SELECT * FROM chairs WHERE id = ?", chair.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	distance := calculateDistance(int(chair.LocationLon.Int32), int(chair.LocationLon.Int32), req.Latitude, req.Longitude)
+	distance := calculateDistance(int(chair.LocationLat.Int32), int(chair.LocationLon.Int32), req.Latitude, req.Longitude)
 	totalDistanceUpdatedAt := time.Now()
 
 	if _, err := tx.ExecContext(
