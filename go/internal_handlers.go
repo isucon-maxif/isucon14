@@ -77,8 +77,8 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 			speed := chairModels[chair.Model]
 
 			// select avg(abs(pickup_latitude - destination_latitude) + abs(pickup_longitude - destination_longitude)) from rides; -> 34.8271
-			// もし移動距離が 50 以上なら、街間の移動とみなして無視する (サービス撤退の意)
-			if moveDist >= 50 {
+			// もし移動距離が 100 以上なら、街間の移動とみなして無視する (サービス撤退の意)
+			if moveDist >= 100 {
 				continue
 			}
 
