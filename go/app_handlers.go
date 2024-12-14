@@ -929,13 +929,6 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	retrievedAt := &time.Time{}
-	err = tx.GetContext(ctx, retrievedAt, `SELECT CURRENT_TIMESTAMP(6)`)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
 	chairs := []Chair{}
 	err = tx.SelectContext(
 		ctx,
@@ -951,7 +944,7 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 	if len(chairs) == 0 {
 		writeJSON(w, http.StatusOK, &appGetNearbyChairsResponse{
 			Chairs:      []appGetNearbyChairsResponseChair{},
-			RetrievedAt: retrievedAt.UnixMilli(),
+			RetrievedAt: time.Now().UnixMilli(),
 		})
 	}
 
@@ -1032,7 +1025,7 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, &appGetNearbyChairsResponse{
 		Chairs:      nearbyChairs,
-		RetrievedAt: retrievedAt.UnixMilli(),
+		RetrievedAt: time.Now().UnixMilli(),
 	})
 }
 
