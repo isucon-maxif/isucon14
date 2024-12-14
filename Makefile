@@ -103,7 +103,7 @@ env-deploy:
 	echo "env deploy"
 	if [ ! -f $(SERVER_ETC)/$(ENV_FILE) ]; then echo "env not configured"; exit 1; fi
 	cp -f $(SERVER_ETC)/$(ENV_FILE) $(ENV_PATH)
-	sudo systemctl restart isuride-matcher.service
+	# sudo systemctl restart isuride-matcher.service
 
 .PHONY: nginx-deploy
 nginx-deploy:
