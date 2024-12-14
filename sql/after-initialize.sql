@@ -1,0 +1,1 @@
+ALTER TABLE rides ADD COLUMN username VARCHAR(30) NULL COMMENT 'ユーザー名';

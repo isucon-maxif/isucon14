@@ -37,3 +37,9 @@ gzip -dkc 3-initial-data.sql.gz | sed -e 's/INSERT INTO `chairs` VALUES/INSERT I
 		--host "$ISUCON_DB_HOST" \
 		--port "$ISUCON_DB_PORT" \
 		"$ISUCON_DB_NAME"
+
+cat after-initialize.sql | mysql -u"$ISUCON_DB_USER" \
+		-p"$ISUCON_DB_PASSWORD" \
+		--host "$ISUCON_DB_HOST" \
+		--port "$ISUCON_DB_PORT" \
+		"$ISUCON_DB_NAME"

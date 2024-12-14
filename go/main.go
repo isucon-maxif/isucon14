@@ -2,6 +2,7 @@ package main
 
 import (
 	crand "crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -195,6 +196,28 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 			`UPDATE chairs SET location_lat = ?, location_lon = ?, total_distance = ?, total_distance_updated_at = ? WHERE id = ?`,
 			lastChairLoc.Latitude, lastChairLoc.Longitude, totalDistance, lastChairLoc.CreatedAt, chair.ID,
 		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+
+	// ライドにユーザーIDが入っている時ユーザー名を追加
+	rides := []*Ride{}
+	err = db.SelectContext(ctx, &rides, "SELECT * FROM rides")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	for _, ride := range rides {
+		user := &User{}
+		err = db.GetContext(ctx, user, "SELECT * FROM users WHERE id = ?", ride.UserID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		ride.UserName = sql.NullString{String: user.Username, Valid: true}
+		_, err = db.ExecContext(ctx, "UPDATE rides SET username = ? WHERE id = ?", user.Username, ride.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return

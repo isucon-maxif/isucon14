@@ -54,6 +54,7 @@ type PaymentToken struct {
 type Ride struct {
 	ID                   string         `db:"id"`
 	UserID               string         `db:"user_id"`
+	UserName             sql.NullString `db:"username"`
 	ChairID              sql.NullString `db:"chair_id"`
 	PickupLatitude       int            `db:"pickup_latitude"`
 	PickupLongitude      int            `db:"pickup_longitude"`

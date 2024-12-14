@@ -383,9 +383,9 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO rides (id, user_id, pickup_latitude, pickup_longitude, destination_latitude, destination_longitude)
-				  VALUES (?, ?, ?, ?, ?, ?)`,
-		rideID, user.ID, req.PickupCoordinate.Latitude, req.PickupCoordinate.Longitude, req.DestinationCoordinate.Latitude, req.DestinationCoordinate.Longitude,
+		`INSERT INTO rides (id, user_id, username, pickup_latitude, pickup_longitude, destination_latitude, destination_longitude)
+				  VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		rideID, user.ID, user.Username, req.PickupCoordinate.Latitude, req.PickupCoordinate.Longitude, req.DestinationCoordinate.Latitude, req.DestinationCoordinate.Longitude,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -475,6 +475,19 @@ func appPostRides(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	if ch, err := chairNotificationChanByRideID[rideID]; !err {
+		*ch <- &chairGetNotificationResponseData{
+			RideID: rideID,
+			User: simpleUser{
+				ID:   user.ID,
+				Name: user.Username,
+			},
+			PickupCoordinate:      *req.PickupCoordinate,
+			DestinationCoordinate: *req.DestinationCoordinate,
+			Status:                "MATCHING",
+		}
 	}
 
 	writeJSON(w, http.StatusAccepted, &appPostRidesResponse{
@@ -669,6 +682,25 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	if ch, err := chairNotificationChanByChairID[ride.ChairID.String]; !err {
+		*ch <- &chairGetNotificationResponseData{
+			RideID: ride.ID,
+			User: simpleUser{
+				ID:   ride.UserID,
+				Name: ride.UserName.String,
+			},
+			PickupCoordinate: Coordinate{
+				Latitude:  ride.PickupLatitude,
+				Longitude: ride.PickupLongitude,
+			},
+			DestinationCoordinate: Coordinate{
+				Latitude:  ride.DestinationLatitude,
+				Longitude: ride.DestinationLongitude,
+			},
+			Status: "COMPLETED",
+		}
 	}
 
 	writeJSON(w, http.StatusOK, &appPostRideEvaluationResponse{

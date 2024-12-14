@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -173,6 +175,14 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	res.Models = models
+
+	// convert res to json
+	jsonRes, err := json.Marshal(res)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	log.Printf("ownerGetSales: " + string(jsonRes))
 
 	writeJSON(w, http.StatusOK, res)
 }
