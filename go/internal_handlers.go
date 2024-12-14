@@ -11,9 +11,16 @@ import (
 func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	tx, err := db.Beginx()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer tx.Rollback()
+
 	// 待っているリクエストを取得
 	rides := []*Ride{}
-	if err := db.SelectContext(ctx, &rides, "SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at"); err != nil {
+	if err := tx.SelectContext(ctx, &rides, "SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at"); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -24,7 +31,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// 空きイスとその座標を取得
 	tmp_freeChairs := []*Chair{}
-	if err := db.SelectContext(ctx, &tmp_freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT id FROM rides WHERE rides.evaluation IS NOT NULL AND chair_id = chairs.id)"); err != nil {
+	if err := tx.SelectContext(ctx, &tmp_freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT id FROM rides WHERE rides.evaluation IS NOT NULL AND chair_id = chairs.id)"); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -36,7 +43,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	freeChairs := []*Chair{}
 	for _, chair := range tmp_freeChairs {
 		isFree := true
-		if err := db.GetContext(ctx, &isFree, `SELECT COUNT(*) = 0 FROM (SELECT id FROM rides WHERE chair_id = ? AND evaluation IS NULL)`, chair.ID); err != nil {
+		if err := tx.GetContext(ctx, &isFree, `SELECT COUNT(*) = 0 FROM (SELECT id FROM rides WHERE chair_id = ? AND evaluation IS NULL)`, chair.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 		}
 		if isFree {
@@ -46,7 +53,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// イスの性能を取得
 	tmp2 := []*ChairModel{}
-	if err := db.SelectContext(ctx, &tmp2, "SELECT * FROM chair_models"); err != nil {
+	if err := tx.SelectContext(ctx, &tmp2, "SELECT * FROM chair_models"); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -86,7 +93,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		}
 
 		isChairUsed[bestChairIdx] = true
-		if _, err := db.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", freeChairs[bestChairIdx].ID, ride.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE rides SET chair_id = ? WHERE id = ?", freeChairs[bestChairIdx].ID, ride.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -96,6 +103,11 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 		chairByAuthTokenCacheMutex.Lock()
 		delete(chairByAuthTokenCache, freeChairs[bestChairIdx].AccessToken)
 		chairByAuthTokenCacheMutex.Unlock()
+	}
+
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
