@@ -24,7 +24,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 
 	// 空きイスとその座標を取得
 	tmp_freeChairs := []*Chair{}
-	if err := db.SelectContext(ctx, &tmp_freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT rides.id FROM ride_statuses JOIN rides ON ride_statuses.ride_id = rides.id WHERE rides.chair_id = chairs.id GROUP BY rides.id HAVING COUNT(*) < 6)"); err != nil {
+	if err := db.SelectContext(ctx, &tmp_freeChairs, "SELECT * FROM chairs WHERE is_active = TRUE AND NOT EXISTS (SELECT id FROM rides WHERE rides.evaluation IS NOT NULL AND chair_id = chairs.id)"); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -36,7 +36,7 @@ func internalGetMatching(w http.ResponseWriter, r *http.Request) {
 	freeChairs := []*Chair{}
 	for _, chair := range tmp_freeChairs {
 		isFree := true
-		if err := db.GetContext(ctx, &isFree, "SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE", chair.ID); err != nil {
+		if err := db.GetContext(ctx, &isFree, `SELECT COUNT(*) = 0 FROM (SELECT id FROM rides WHERE chair_id = ? AND evaluation IS NULL)`, chair.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 		}
 		if isFree {
