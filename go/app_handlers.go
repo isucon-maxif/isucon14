@@ -608,6 +608,9 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if ride.Evaluation == nil {
+		ride.Evaluation = new(int)
+	}
 	*ride.Evaluation = req.Evaluation
 
 	_, err = tx.ExecContext(
