@@ -24,16 +24,18 @@ CREATE TABLE chair_models
 DROP TABLE IF EXISTS chairs;
 CREATE TABLE chairs
 (
-  id           VARCHAR(26)  NOT NULL COMMENT '椅子ID',
-  owner_id     VARCHAR(26)  NOT NULL COMMENT 'オーナーID',
-  name         VARCHAR(30)  NOT NULL COMMENT '椅子の名前',
-  model        TEXT         NOT NULL COMMENT '椅子のモデル',
-  is_active    TINYINT(1)   NOT NULL COMMENT '配椅子受付中かどうか',
-  access_token VARCHAR(255) NOT NULL COMMENT 'アクセストークン',
-  location_lat INTEGER     NULL COMMENT '椅子の現在位置(経度)',
-  location_lon INTEGER     NULL COMMENT '椅子の現在位置(緯度)',
-  created_at   DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '登録日時',
-  updated_at   DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新日時',
+  id                       VARCHAR(26)  NOT NULL COMMENT '椅子ID',
+  owner_id                 VARCHAR(26)  NOT NULL COMMENT 'オーナーID',
+  name                     VARCHAR(30)  NOT NULL COMMENT '椅子の名前',
+  model                    TEXT         NOT NULL COMMENT '椅子のモデル',
+  is_active                TINYINT(1)   NOT NULL COMMENT '配椅子受付中かどうか',
+  access_token             VARCHAR(255) NOT NULL COMMENT 'アクセストークン',
+  location_lat             INTEGER          NULL COMMENT '椅子の現在位置(経度)',
+  location_lon             INTEGER          NULL COMMENT '椅子の現在位置(緯度)',
+  total_distance           INTEGER      NOT NULL DEFAULT 0 COMMENT '椅子の総移動距離合計',
+  total_distance_update_at DATETIME(6)      NULL COMMENT '椅子の総距離合計の更新日時',
+  created_at               DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '登録日時',
+  updated_at               DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新日時',
   PRIMARY KEY (id),
   UNIQUE (access_token)
 )
